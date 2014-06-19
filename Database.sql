@@ -2,10 +2,6 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-DROP DATABASE IF EXISTS `prueba`;
-CREATE DATABASE  IF NOT EXISTS `prueba`;
-USE `prueba`;
-
 -- <Tablas sin relaciones>
 -- La tabla "Usuario" no tiene relaciones
 -- esta tabla es usada para la identificacion
@@ -62,13 +58,6 @@ CREATE TABLE proveedores (
   UNIQUE KEY nombre_proveedor (nombre_proveedor)
 )ENGINE=INNODB;
 
-DROP TABLE IF EXISTS precios;
-CREATE TABLE precios (
-  cod_precio BIGINT UNSIGNED ZEROFILL AUTO_INCREMENT,
-  precio_venta DOUBLE UNSIGNED NOT NULL,
-  PRIMARY KEY (cod_precio)
-)ENGINE=INNODB;
-
 -- </Tablas Primarias>
 
 -- <Tablas Secundarias>
@@ -96,14 +85,15 @@ CREATE TABLE pedido (
 
 DROP TABLE IF EXISTS pedido_producto;
 CREATE TABLE pedido_producto (
-  id_producto BIGINT UNSIGNED ZEROFILL AUTO_INCREMENT,
   numero_pedido BIGINT(10) UNSIGNED ZEROFILL NOT NULL,
   cod_producto VARCHAR(10),
   cantidad_producto SMALLINT(4),
-  cod_precio BIGINT UNSIGNED ZEROFILL AUTO_INCREMENT,
-  #monto_unitario DOUBLE NOT NULL,
-  #id_IVA TINYINT(2) UNSIGNED,
-  PRIMARY KEY (id_producto),
+  monto_unitario DOUBLE NOT NULL,
+  id_IVA tinyint(2) unsigned NOT NULL,
+  INDEX (id_IVA),
+  FOREIGN KEY (id_IVA)
+    REFERENCES IVA (id_IVA)
+	ON UPDATE RESTRICT ON DELETE RESTRICT,
   INDEX (numero_pedido),
   FOREIGN KEY (numero_pedido)
 	REFERENCES pedido (numero_pedido)
@@ -111,21 +101,16 @@ CREATE TABLE pedido_producto (
   INDEX (cod_producto),
   FOREIGN KEY (cod_producto)
 	REFERENCES producto (cod_producto)
-	ON UPDATE RESTRICT ON DELETE RESTRICT,
-  INDEX (cod_precio),
-  FOREIGN KEY (cod_precio)
-	REFERENCES precios (cod_precio)
 	ON UPDATE RESTRICT ON DELETE RESTRICT
 )ENGINE=INNODB;
 
 DROP TABLE IF EXISTS pedido_pago;
 CREATE TABLE pedido_pago (
-  id_pago BIGINT UNSIGNED ZEROFILL AUTO_INCREMENT,
   numero_pedido BIGINT(10) UNSIGNED ZEROFILL NOT NULL,
   cod_pago TINYINT(2) UNSIGNED NOT NULL,
   monto_unitario DOUBLE UNSIGNED NOT NULL,
-  confirmacion_pago BIGINT(10) UNSIGNED ZEROFILL,
-  PRIMARY KEY (id_pago),
+  confirmacion_pago BIGINT(10) UNSIGNED ZEROFILL NOT NULL,
+
   INDEX (numero_pedido),
   FOREIGN KEY (numero_pedido)
 	REFERENCES pedido (numero_pedido)
@@ -154,8 +139,7 @@ CREATE TABLE factura_producto (
   numero_factura BIGINT(10) UNSIGNED ZEROFILL NOT NULL,
   cod_producto VARCHAR(10),
   cantidad_producto SMALLINT(4),
-  cod_precio BIGINT UNSIGNED ZEROFILL AUTO_INCREMENT,
-  #monto_unitario DOUBLE NOT NULL,
+  monto_unitario DOUBLE NOT NULL,
   id_IVA TINYINT(2) UNSIGNED,
   PRIMARY KEY (id_producto),
   INDEX (id_IVA),
@@ -169,10 +153,6 @@ CREATE TABLE factura_producto (
   INDEX (cod_producto),
   FOREIGN KEY (cod_producto)
 	REFERENCES producto (cod_producto)
-	ON UPDATE RESTRICT ON DELETE RESTRICT,
-  INDEX (cod_precio),
-  FOREIGN KEY (cod_precio)
-	REFERENCES precios (cod_precio)
 	ON UPDATE RESTRICT ON DELETE RESTRICT
 )ENGINE=INNODB;
 
@@ -183,6 +163,7 @@ CREATE TABLE factura_pago (
   cod_pago TINYINT(2) UNSIGNED NOT NULL,
   monto_unitario DOUBLE UNSIGNED NOT NULL,
   confirmacion_pago BIGINT(10) UNSIGNED ZEROFILL,
+
   PRIMARY KEY (id_pago),
   INDEX (numero_factura),
   FOREIGN KEY (numero_factura)
@@ -220,6 +201,7 @@ CREATE TABLE nota_credito (
 DROP TABLE IF EXISTS nota_credito_producto;
 CREATE TABLE nota_credito_producto (
   id_producto BIGINT UNSIGNED ZEROFILL,
+
   numero_nota_credito BIGINT(10) UNSIGNED ZEROFILL NOT NULL,
   cantidad_producto SMALLINT(4) UNSIGNED NOT NULL,
   monto_unitario DOUBLE UNSIGNED NOT NULL,
@@ -266,7 +248,7 @@ CREATE TABLE inventario (
   cantidad_actual SMALLINT(4) NOT NULL,
   cantidad_inicial SMALLINT(4) UNSIGNED DEFAULT NULL,
   precio_compra DOUBLE UNSIGNED DEFAULT NULL,
-  cod_precio BIGINT UNSIGNED ZEROFILL AUTO_INCREMENT,
+  precio_venta double unsigned NOT NULL,
   numero_factura_proveedor BIGINT(10) UNSIGNED ZEROFILL DEFAULT NULL,
   PRIMARY KEY (cod_lote),
   INDEX (cod_producto),
@@ -276,10 +258,6 @@ CREATE TABLE inventario (
   INDEX (numero_factura_proveedor),
   FOREIGN KEY (numero_factura_proveedor)
 	REFERENCES factura_proveedor (numero_factura_proveedor)
-	ON UPDATE RESTRICT ON DELETE RESTRICT,
-  INDEX (cod_precio),
-  FOREIGN KEY (cod_precio)
-	REFERENCES precios (cod_precio)
 	ON UPDATE RESTRICT ON DELETE RESTRICT
 )ENGINE=INNODB;
 
@@ -377,6 +355,7 @@ FOR EACH ROW BEGIN
 IF (NEW.nivel>3) THEN
 SET NEW.nivel = 0;
 END IF;
+
 END //
 
 -- </Procedimientos de Almacenado (Tablas sin Relaciones)>
@@ -787,21 +766,21 @@ INSERT INTO pedido_pago VALUES(NULL,nump,codpago,monto,confirmacion);
 END IF;
 END //
 
-#DROP PROCEDURE IF EXISTS modificar_pedido_pago;//
+DROP PROCEDURE IF EXISTS modificar_pedido_pago;//
 
-#CREATE PROCEDURE modificar_pedido_pago(IdPago BIGINT,monto DOUBLE,confirmacion BIGINT(10))
-#BEGIN
-#IF (NOT EXISTS(SELECT f.numero_factura FROM pedido p JOIN pedido_pago a USING(numero_pedido) JOIN factura f ON p.numero_pedido=f.numero_pedido WHERE a.id_pago=IdPago AND NOT EXISTS(SELECT numero_nota_credito FROM nota_credito WHERE numero_factura=f.numero_factura))) THEN
-#IF monto=0 THEN
-#DELETE FROM pedido_pago WHERE p.id_pago=IdPago;
-#ELSE
-#UPDATE pedido_pago
-#SET monto_unitario=monto,
-#confirmacion_pago=confirmacion
-#WHERE id_pago=IdPago;
-#END IF;
-#END IF;
-#END//
+CREATE PROCEDURE modificar_pedido_pago(IdPago BIGINT,monto DOUBLE,confirmacion BIGINT(10))
+BEGIN
+IF (NOT EXISTS(SELECT f.numero_factura FROM pedido p JOIN pedido_pago a USING(numero_pedido) JOIN factura f ON p.numero_pedido=f.numero_pedido WHERE a.id_pago=IdPago AND NOT EXISTS(SELECT numero_nota_credito FROM nota_credito WHERE numero_factura=f.numero_factura))) THEN
+IF monto=0 THEN
+DELETE FROM pedido_pago WHERE p.id_pago=IdPago;
+ELSE
+UPDATE pedido_pago
+SET monto_unitario=monto,
+confirmacion_pago=confirmacion
+WHERE id_pago=IdPago;
+END IF;
+END IF;
+END//
 
 DROP PROCEDURE IF EXISTS ingresar_pedido_producto;//
 
@@ -826,20 +805,20 @@ INSERT INTO pedido_producto VALUES(NULL,NumPedido,CodProducto,cant,precio);
 END IF;
 END //
 
-#DROP PROCEDURE IF EXISTS modificar_pedido_producto;//
+DROP PROCEDURE IF EXISTS modificar_pedido_producto;//
 
-#CREATE PROCEDURE modificar_pedido_producto(IdProducto BIGINT,cant SMALLINT(4))
-#BEGIN
-#IF NOT EXISTS(SELECT f.numero_factura FROM pedido p JOIN pedido_producto o USING(numero_pedido) JOIN factura f ON p.numero_pedido=f.numero_pedido WHERE o.id_producto=IdProducto AND NOT EXISTS(SELECT numero_nota_credito FROM nota_credito WHERE numero_factura=f.numero_factura)) THEN
-#IF cant=0 THEN
-#DELETE FROM pedido_producto WHERE id_producto=IdProducto;
-#ELSE
-#UPDATE pedido_producto
-#SET cantidad_producto=cant
-#WHERE id_producto=IdProducto;
-#END IF;
-#END IF;
-#END//
+CREATE PROCEDURE modificar_pedido_producto(IdProducto BIGINT,cant SMALLINT(4))
+BEGIN
+IF NOT EXISTS(SELECT f.numero_factura FROM pedido p JOIN pedido_producto o USING(numero_pedido) JOIN factura f ON p.numero_pedido=f.numero_pedido WHERE o.id_producto=IdProducto AND NOT EXISTS(SELECT numero_nota_credito FROM nota_credito WHERE numero_factura=f.numero_factura)) THEN
+IF cant=0 THEN
+DELETE FROM pedido_producto WHERE id_producto=IdProducto;
+ELSE
+UPDATE pedido_producto
+SET cantidad_producto=cant
+WHERE id_producto=IdProducto;
+END IF;
+END IF;
+END//
 
 DROP EVENT IF EXISTS reintegrar_inventario;//
 
@@ -1112,6 +1091,7 @@ IF((SELECT IF(COUNT(serial) IS NULL,0,COUNT(serial)) AS `serial` FROM seriales s
 'PARCIALMENTE','SI'),'NO') AS `Despachado`
 FROM factura f JOIN pedido p USING(numero_pedido) JOIN maestro_cliente m USING(RIF);
 ELSE
+
 SELECT p.RIF AS `RIF`,
 m.Razon_Social AS `Razon Social`,
 f.fecha AS `Fecha`,
@@ -1147,7 +1127,7 @@ DROP PROCEDURE IF EXISTS consultar_factura_productos;//
 
 CREATE PROCEDURE consultar_factura_productos(NumFactura BIGINT(10))
 BEGIN
-/*(*/SELECT f.id_producto AS `ID Producto`,
+(SELECT f.id_producto AS `ID Producto`,
 f.numero_factura AS `N. Factura`,
 f.cod_producto AS `Cod. del Producto`,
 (SELECT p.nombre FROM producto p WHERE p.cod_producto=f.cod_producto) AS `Producto`,
@@ -1156,7 +1136,7 @@ IF(f.cantidad_producto IS NULL,f.monto_unitario,f.monto_unitario*IF(EXISTS(SELEC
 (f.cantidad_producto*(f.monto_unitario*IF(EXISTS(SELECT * FROM IVA v JOIN producto p USING(id_IVA) WHERE v.tipo_IVA IS NULL AND f.cod_producto=p.cod_producto),1,IF(EXISTS(SELECT * FROM IVA v JOIN producto p USING(id_IVA) WHERE v.tipo_IVA IS TRUE AND f.cod_producto=p.cod_producto),1,(1+((SELECT v.IVA FROM IVA v JOIN producto p USING(id_IVA) WHERE f.cod_producto=p.cod_producto LIMIT 1)/100)))))) AS `Total producto`,
 (SELECT v.IVA FROM IVA v WHERE v.id_IVA=f.id_IVA LIMIT 1) AS `IVA`,
 IF(f.cantidad_producto IS NULL,NULL,IF(EXISTS(SELECT * FROM IVA v WHERE v.tipo_IVA IS NULL AND v.id_IVA=f.id_IVA),'EXENTO',IF(EXISTS(SELECT * FROM IVA v WHERE v.tipo_IVA IS TRUE AND v.id_IVA=f.id_IVA),'INCLUIDO','EXCLUIDO'))) AS `Tipo de IVA`
-FROM factura_producto f WHERE f.numero_factura=NumFactura/*)
+FROM factura_producto f WHERE f.numero_factura=NumFactura)
 UNION(
 SELECT '-----' AS `ID Producto`,
 '-----' AS `N. Factura`,
@@ -1168,7 +1148,7 @@ FROM factura_producto f JOIN producto p USING(cod_producto) JOIN IVA a ON f.id_I
 concat('+ ',(SELECT SUM(f.monto_unitario*(IF(a.tipo_iva IS NULL,(0),IF(a.tipo_iva IS TRUE,(a.IVA/100),(a.IVA/100)))))
 FROM factura_producto f JOIN producto p USING(cod_producto) JOIN IVA a ON f.id_IVA=a.id_IVA WHERE numero_factura=NumFactura)) AS `IVA`,
 concat('= ',(SELECT SUM(f.monto_unitario*(IF(a.tipo_iva IS NULL,(1),IF(a.tipo_iva IS TRUE,(1),(1+(a.IVA/100))))))
-FROM factura_producto f JOIN producto p USING(cod_producto) JOIN IVA a ON f.id_IVA=a.id_IVA WHERE numero_factura=NumFactura)) AS `Tipo de IVA`)*/;
+FROM factura_producto f JOIN producto p USING(cod_producto) JOIN IVA a ON f.id_IVA=a.id_IVA WHERE numero_factura=NumFactura)) AS `Tipo de IVA`);
 END //
 
 DROP PROCEDURE IF EXISTS actualizar_cuentas_cobrar;//
@@ -1250,6 +1230,7 @@ IF(n.numero_nota_credito = ANY(SELECT numero_nota_credito FROM nota_credito_prod
 IF(n.numero_nota_credito = ANY(SELECT b.numero_nota_credito FROM nota_credito_producto b JOIN nota_credito a USING(numero_nota_credito) JOIN factura c USING(numero_factura) JOIN factura_producto d ON d.numero_factura=c.numero_factura WHERE d.monto_unitario>b.monto_unitario),'DIFERENCIA DE PRECIO','DEVOLUCION'),'ANULACION') AS `Tipo de Documento` 
 FROM nota_credito n JOIN factura f USING(numero_factura) JOIN pedido p USING(numero_pedido) JOIN maestro_cliente m USING(RIF);
 ELSE
+
 SELECT p.RIF AS `RIF`,
 m.Razon_Social AS `Razon Social`,
 n.numero_factura AS `N. Factura`,
@@ -1276,6 +1257,7 @@ IF(a.tipo_IVA IS NULL,'EXENTO',IF(a.tipo_IVA IS true,'INCLUIDO','EXCLUIDO')) AS 
 FROM nota_credito_producto n JOIN factura_producto f USING(id_producto) JOIN IVA a USING(id_IVA)
 WHERE f.numero_factura=NumeroFactura;
 ELSE
+
 SELECT f.id_producto AS `ID Producto`,
 f.cod_producto AS `Cod. Producto`,
 n.numero_nota_credito AS `Nro. Nota Credito`,
@@ -1292,6 +1274,7 @@ DROP PROCEDURE IF EXISTS reintegrar;//
 
 CREATE PROCEDURE reintegrar(seria VARCHAR(10))
 BEGIN
+
 DECLARE lote BIGINT(10);
 DECLARE NumeroNota BIGINT(10);
 SET lote = (SELECT cod_lote FROM seriales s WHERE s.serial = seria);
@@ -1341,6 +1324,7 @@ SET NoCobrado = (SELECT SUM(p.monto_unitario) FROM factura_pago p JOIN factura f
 ELSE
 SELECT 'PERIODO DE TIEMPO INCORRECTO' AS `ADVERTENCIA`;
 END IF;
+
 END//
 
 DROP PROCEDURE IF EXISTS reporte_inventario;//
